@@ -2,22 +2,9 @@
 <html lang="tr">
   <head>
     <meta charset="UTF-8" />
-    <title>Redirecting…</title>
-    <style>
-      body { font-family: system-ui, sans-serif; padding: 24px; }
-      a { color: #2563eb; }
-    </style>
-  </head>
-  <body>
-    <p>Demo'ya yönlendiriliyorsunuz… Eğer otomatik geçiş olmazsa <a href="/demo/">/demo/</a> bağlantısına tıklayın.</p>
-  </body>
-</html>
-<!doctype html>
-<html lang="tr">
-  <head>
-    <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
     <title>Spritesheet Demo</title>
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' fill='%23111'/%3E%3Ctext x='50%25' y='55%25' text-anchor='middle' font-size='36' fill='%23ddd' font-family='Verdana'%3EA%3C/text%3E%3C/svg%3E" />
     <style>
       body { margin: 0; background: #111; color: #ddd; font-family: system-ui, sans-serif; }
       #wrap { display: flex; gap: 16px; padding: 16px; align-items: flex-start; }
@@ -40,7 +27,6 @@
           <input id="imgFile" type="file" accept="image/*" />
         </div>
         <p class="hint">Varsayılan: <code>/assets/Turkey_animation_without_shadow.png</code>. Dosya seçerseniz yol göz ardı edilir.</p>
-  <!-- Frame Width x Height and Columns x Rows controls removed -->
         <div style="margin-top:8px;">
           <button id="reload">Reload</button>
         </div>
@@ -48,6 +34,6 @@
         <select id="animSelect" style="width:100%"></select>
       </div>
     </div>
-  <script type="module" src="./demo/main.ts"></script>
+    <script type="module" src="./demo/main.ts"></script>
   </body>
 </html>
