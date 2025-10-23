@@ -1,11 +1,7 @@
-import { ImageUtils } from '../src';
+import { ImageUtils } from './src';
 
 const cv = document.getElementById('cv') as HTMLCanvasElement;
 const ctx = cv.getContext('2d')!;
-const fwInput = document.getElementById('fw') as HTMLInputElement;
-const fhInput = document.getElementById('fh') as HTMLInputElement;
-const colsInput = document.getElementById('cols') as HTMLInputElement;
-const rowsInput = document.getElementById('rows') as HTMLInputElement;
 const imgPathInput = document.getElementById('imgPath') as HTMLInputElement;
 const imgFileInput = document.getElementById('imgFile') as HTMLInputElement;
 const animSelect = document.getElementById('animSelect') as HTMLSelectElement;
@@ -18,6 +14,10 @@ let last = performance.now();
 let frameIndex = 0;
 let elapsed = 0;
 const defaultDuration = 80; // ms
+let frameW = 64;
+let frameH = 64;
+let cols = 1;
+let rows = 1;
 
 async function setup() {
   // Öncelik: dosya seçilmişse onu kullan
@@ -47,11 +47,11 @@ async function setup() {
     if (animRes && animRes.animations.length) {
       animations = animRes.animations;
       rects = animations[0].rects;
-      // UI alanlarını otomatik doldur
-      fwInput.value = String(animRes.frameWidth);
-      fhInput.value = String(animRes.frameHeight);
-      colsInput.value = String(animRes.cols);
-      rowsInput.value = String(animRes.animations.length);
+      // Tespit edilen ölçüleri ata
+      frameW = animRes.frameWidth;
+      frameH = animRes.frameHeight;
+      cols = animRes.cols;
+      rows = animRes.animations.length;
 
       // Dropdown'u doldur
       if (animSelect) {
@@ -68,10 +68,10 @@ async function setup() {
       const res = ImageUtils.autoDetectGrid(img);
       if (res && res.rects.length) {
         rects = res.rects;
-        fwInput.value = String(res.frameWidth);
-        fhInput.value = String(res.frameHeight);
-        colsInput.value = String(res.cols);
-        rowsInput.value = String(res.rows);
+        frameW = res.frameWidth;
+        frameH = res.frameHeight;
+        cols = res.cols;
+        rows = res.rows;
       }
     }
   }
@@ -113,10 +113,8 @@ function loop(now: number) {
 
   ctx.clearRect(0, 0, cv.width, cv.height);
 
-  const fw = parseInt(fwInput.value, 10) || 64;
-  const fh = parseInt(fhInput.value, 10) || 64;
-  const cols = parseInt(colsInput.value, 10) || 1;
-  const rows = parseInt(rowsInput.value, 10) || 1;
+  const fw = frameW || 64;
+  const fh = frameH || 64;
 
   const totalFrames = rects.length || cols * rows;
   const scale = 2;
