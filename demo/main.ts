@@ -32,6 +32,7 @@ async function setup() {
       URL.revokeObjectURL(url);
     }
   } else {
+    // Varsayılan yol: assets/...
     const path = (imgPathInput && imgPathInput.value) || 'assets/spritesheet.png';
     try {
       img = await ImageUtils.loadImage(path);
