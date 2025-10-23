@@ -12,42 +12,4 @@
     <p>Demo'ya yönlendiriliyorsunuz… Eğer otomatik geçiş olmazsa <a href="/demo/">/demo/</a> bağlantısına tıklayın.</p>
   </body>
 </html>
-<!doctype html>
-<html lang="tr">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-    <title>Spritesheet Demo</title>
-    <style>
-      body { margin: 0; background: #111; color: #ddd; font-family: system-ui, sans-serif; }
-      #wrap { display: flex; gap: 16px; padding: 16px; align-items: flex-start; }
-      canvas { background: #222; border: 1px solid #333; image-rendering: pixelated; }
-      .panel { max-width: 380px; }
-      input, button { padding: 6px 8px; }
-      label { display: block; margin: 8px 0 4px; }
-      .hint { color: #aaa; font-size: 12px; }
-    </style>
-  </head>
-  <body>
-    <div id="wrap">
-      <canvas id="cv" width="320" height="240"></canvas>
-      <div class="panel">
-        <h3>Demo</h3>
-        <p>Bir görsel yolu girin ya da dosya seçin:</p>
-        <label>Image Path</label>
-        <input id="imgPath" type="text" value="assets/Turkey_animation_without_shadow.png" style="width: 100%" />
-        <div style="margin-top:6px">
-          <input id="imgFile" type="file" accept="image/*" />
-        </div>
-        <p class="hint">Varsayılan: <code>/assets/Turkey_animation_without_shadow.png</code>. Dosya seçerseniz yol göz ardı edilir.</p>
-  <!-- Frame Width x Height and Columns x Rows controls removed -->
-        <div style="margin-top:8px;">
-          <button id="reload">Reload</button>
-        </div>
-        <label style="margin-top:12px;">Animation</label>
-        <select id="animSelect" style="width:100%"></select>
-      </div>
-    </div>
-  <script type="module" src="./demo/main.ts"></script>
-  </body>
-</html>
+<!-- The demo UI is now only at the root index.html. -->
