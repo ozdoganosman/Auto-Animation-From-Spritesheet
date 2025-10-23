@@ -14,23 +14,47 @@ This library provides a comprehensive solution for converting spritesheets into 
 
 This repo is set up with TypeScript and Jest.
 
-- Install deps
 
 ```powershell
 npm install
 ```
 
-- Run tests
 
 ```powershell
 npm test
 ```
 
-- Build
 
 ```powershell
 npm run build
 ```
+
+## Deploying the demo
+
+### Netlify (recommended)
+This repo includes a `netlify.toml` so you can deploy with a few clicks:
+
+1. Push this repo to GitHub (already done).
+2. In Netlify: Add new site → Import from Git → pick this repo.
+3. Build command: auto-detected from `netlify.toml` (or set `npm run site`).
+4. Publish directory: `dist`.
+5. Deploy. Root path will redirect to `demo/`.
+
+Optional CLI deploy (requires login):
+
+```powershell
+# one-time
+npm i -g netlify-cli
+netlify login
+
+# inside project
+netlify init   # link to a new or existing site
+npm run site
+netlify deploy --dir=dist --prod
+```
+
+### GitHub Pages
+GitHub Actions workflow `deploy-pages.yml` builds and publishes to Pages when you push to `main` or `master`.
 
 ## Usage
 
