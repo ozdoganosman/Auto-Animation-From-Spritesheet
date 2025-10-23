@@ -2,12 +2,6 @@
   command = "npm run site"
   publish = "dist"
 
-# Root path should redirect to the demo app
-[[redirects]]
-  from = "/"
-  to = "/demo/"
-  status = 301
-  force = true
 
 # Optional: cache built assets aggressively
 [[headers]]
