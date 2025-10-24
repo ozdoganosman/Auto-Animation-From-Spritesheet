@@ -1,4 +1,4 @@
-import { ImageUtils } from './src';
+import { ImageUtils, GenericJSONExporter } from './src';
 
 const cv = document.getElementById('cv') as HTMLCanvasElement;
 const ctx = cv.getContext('2d')!;
@@ -6,6 +6,8 @@ const imgPathInput = document.getElementById('imgPath') as HTMLInputElement;
 const imgFileInput = document.getElementById('imgFile') as HTMLInputElement;
 const animSelect = document.getElementById('animSelect') as HTMLSelectElement;
 const reloadBtn = document.getElementById('reload') as HTMLButtonElement;
+const downloadCurrentBtn = document.getElementById('downloadCurrent') as HTMLButtonElement;
+const downloadAllBtn = document.getElementById('downloadAll') as HTMLButtonElement;
 
 let img: HTMLImageElement | null = null;
 let rects: { x: number; y: number; w: number; h: number }[] = [];
@@ -18,6 +20,8 @@ let frameW = 64;
 let frameH = 64;
 let cols = 1;
 let rows = 1;
+let currentAnimIndex = 0;
+let lastImageSource = '';
 
 async function setup() {
   // Öncelik: dosya seçilmişse onu kullan
@@ -26,6 +30,7 @@ async function setup() {
     const url = URL.createObjectURL(file);
     try {
       img = await ImageUtils.loadImage(url);
+      lastImageSource = file.name || 'uploaded-image';
     } catch {
       img = null;
     } finally {
@@ -36,6 +41,7 @@ async function setup() {
     const path = (imgPathInput && imgPathInput.value) || 'assets/spritesheet.png';
     try {
       img = await ImageUtils.loadImage(path);
+      lastImageSource = path;
     } catch {
       img = null; // görsel yoksa demo fake karelerle çalışmaya devam etsin
     }
@@ -62,7 +68,8 @@ async function setup() {
           opt.textContent = a.name;
           animSelect.appendChild(opt);
         });
-        animSelect.value = '0';
+        currentAnimIndex = 0;
+        animSelect.value = String(currentAnimIndex);
       }
     } else {
       const res = ImageUtils.autoDetectGrid(img);
@@ -72,6 +79,17 @@ async function setup() {
         frameH = res.frameHeight;
         cols = res.cols;
         rows = res.rows;
+        // Tek animasyon varsayalım
+        animations = [{ name: 'Animation', rects: rects.slice() }];
+        if (animSelect) {
+          animSelect.innerHTML = '';
+          const opt = document.createElement('option');
+          opt.value = '0';
+          opt.textContent = 'Animation';
+          animSelect.appendChild(opt);
+          currentAnimIndex = 0;
+          animSelect.value = '0';
+        }
       }
     }
   }
@@ -94,6 +112,7 @@ if (animSelect) {
     const idx = parseInt(animSelect.value, 10) || 0;
     rects = animations[idx]?.rects || rects;
     frameIndex = 0;
+    currentAnimIndex = idx;
   });
 }
 
@@ -153,3 +172,47 @@ function loop(now: number) {
 }
 
 setup().then(() => requestAnimationFrame(loop)).catch(console.error);
+
+// --- Export helpers ---
+function buildExportData(animList: { name: string; rects: { x: number; y: number; w: number; h: number }[] }[]) {
+  return {
+    image: lastImageSource,
+    frameWidth: frameW,
+    frameHeight: frameH,
+    cols,
+    rows,
+    animations: animList
+  };
+}
+
+function downloadText(filename: string, text: string) {
+  const blob = new Blob([text], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+const exporter = new GenericJSONExporter();
+
+if (downloadCurrentBtn) {
+  downloadCurrentBtn.addEventListener('click', () => {
+    const list = animations.length ? [animations[currentAnimIndex] ?? animations[0]] : [{ name: 'Animation', rects }];
+    const data = buildExportData(list);
+    const json = exporter.export(data);
+    downloadText('animation-current.json', json);
+  });
+}
+
+if (downloadAllBtn) {
+  downloadAllBtn.addEventListener('click', () => {
+    const list = animations.length ? animations : [{ name: 'Animation', rects }];
+    const data = buildExportData(list);
+    const json = exporter.export(data);
+    downloadText('animations-all.json', json);
+  });
+}
