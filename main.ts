@@ -1,4 +1,5 @@
 import { ImageUtils, GenericJSONExporter } from './src';
+import JSZip from 'jszip';
 
 const cv = document.getElementById('cv') as HTMLCanvasElement;
 const ctx = cv.getContext('2d')!;
@@ -8,6 +9,8 @@ const animSelect = document.getElementById('animSelect') as HTMLSelectElement;
 const reloadBtn = document.getElementById('reload') as HTMLButtonElement;
 const downloadCurrentBtn = document.getElementById('downloadCurrent') as HTMLButtonElement;
 const downloadAllBtn = document.getElementById('downloadAll') as HTMLButtonElement;
+const downloadPNGBtn = document.getElementById('downloadPNG') as HTMLButtonElement;
+const downloadZIPBtn = document.getElementById('downloadZIP') as HTMLButtonElement;
 
 let img: HTMLImageElement | null = null;
 let rects: { x: number; y: number; w: number; h: number }[] = [];
@@ -214,5 +217,76 @@ if (downloadAllBtn) {
     const data = buildExportData(list);
     const json = exporter.export(data);
     downloadText('animations-all.json', json);
+  });
+}
+
+// ---- PNG spritesheet of current animation ----
+function sanitize(name: string) {
+  return (name || 'animation').replace(/[^a-z0-9_-]+/gi, '_');
+}
+
+async function buildSpriteStripPNG(anim: { name: string; rects: { x: number; y: number; w: number; h: number }[] }) {
+  if (!img) throw new Error('No image loaded');
+  const cellW = Math.max(frameW, ...anim.rects.map(r => r.w || frameW));
+  const cellH = Math.max(frameH, ...anim.rects.map(r => r.h || frameH));
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.max(1, anim.rects.length) * cellW;
+  canvas.height = cellH;
+  const c = canvas.getContext('2d')!;
+  c.imageSmoothingEnabled = false;
+  anim.rects.forEach((r, i) => {
+    const dx = i * cellW + Math.floor((cellW - r.w) / 2);
+    const dy = Math.floor((cellH - r.h) / 2);
+    try {
+      c.drawImage(img as HTMLImageElement, r.x, r.y, r.w, r.h, dx, dy, r.w, r.h);
+    } catch {}
+  });
+  return await new Promise<Blob>((resolve) => canvas.toBlob(b => resolve(b!), 'image/png'));
+}
+
+if (downloadPNGBtn) {
+  downloadPNGBtn.addEventListener('click', async () => {
+    try {
+      const anim = animations.length ? (animations[currentAnimIndex] ?? animations[0]) : { name: 'Animation', rects };
+      const blob = await buildSpriteStripPNG(anim);
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `${sanitize(anim.name)}.png`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(a.href);
+    } catch (e) {
+      console.error(e);
+    }
+  });
+}
+
+// ---- ZIP with all animations' PNG + JSON ----
+if (downloadZIPBtn) {
+  downloadZIPBtn.addEventListener('click', async () => {
+    try {
+      const list = animations.length ? animations : [{ name: 'Animation', rects }];
+      const zip = new JSZip();
+      // JSON manifest
+      const json = exporter.export(buildExportData(list));
+      zip.file('animations.json', json);
+      // PNGs per animation
+      for (const an of list) {
+        const blob = await buildSpriteStripPNG(an);
+        const arrayBuf = await blob.arrayBuffer();
+        zip.file(`sprites/${sanitize(an.name)}.png`, arrayBuf);
+      }
+      const zipBlob = await zip.generateAsync({ type: 'blob' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(zipBlob);
+      a.download = 'animations.zip';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(a.href);
+    } catch (e) {
+      console.error(e);
+    }
   });
 }
