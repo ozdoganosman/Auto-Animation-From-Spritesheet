@@ -120,7 +120,20 @@ export type AutoAnimationsResult = {
 // Higher-level helper: split the sheet into multiple animation strips (one per non-empty row band)
 export function autoDetectAnimations(
     img: HTMLImageElement,
-    options?: { alphaThreshold?: number; minFillRatio?: number; bgTolerance?: number; bgColor?: [number, number, number] }
+    options?: {
+        alphaThreshold?: number;
+        minFillRatio?: number;
+        bgTolerance?: number;
+        bgColor?: [number, number, number];
+        // Heuristic tuning
+        motionEpsilon?: number;   // px threshold to consider as motion on an axis
+        biasEpsilon?: number;     // px threshold to consider bias significant
+        areaSpikeRatio?: number;  // area peak vs mean ratio for 'attack'
+        jumpRatio?: number;       // vertical motion dominance ratio for 'jump'
+        jerkinessRatio?: number;  // step variance indicator for 'hurt'
+        // Optional row-direction mapping for classic 4-strip sheets
+        rowDirections?: Array<'up' | 'right' | 'down' | 'left'>;
+    }
 ): AutoAnimationsResult | null {
     const minFillRatio = options?.minFillRatio ?? 0.01; // kare içinde en az %1 doluluk olsun
     const w = img.naturalWidth || img.width;
@@ -177,8 +190,22 @@ export function autoDetectAnimations(
             }
         }
         if (rects.length) {
-            // Heuristic naming based on centroid motion and bias
-            const name = classifyAnimation(rects, mask, w);
+            // Heuristic naming based on centroid/area motion and optional row direction mapping
+            const preferredDir = options?.rowDirections && options.rowDirections[rIdx] ? options.rowDirections[rIdx] : undefined;
+            const name = classifyAnimation(
+                rects,
+                mask,
+                w,
+                integral,
+                {
+                    motionEpsilon: options?.motionEpsilon,
+                    biasEpsilon: options?.biasEpsilon,
+                    areaSpikeRatio: options?.areaSpikeRatio,
+                    jumpRatio: options?.jumpRatio,
+                    jerkinessRatio: options?.jerkinessRatio,
+                    preferredDirection: preferredDir,
+                }
+            );
             animations.push({ name, rects });
         }
     }
@@ -195,7 +222,25 @@ export function autoDetectAnimations(
 }
 
 // --- Heuristic classifier for animation type and direction ---
-function classifyAnimation(rects: Rect[], mask: Uint8Array, imgW: number): string {
+function classifyAnimation(
+    rects: Rect[],
+    mask: Uint8Array,
+    imgW: number,
+    integral: Int32Array,
+    opts?: {
+        motionEpsilon?: number;
+        biasEpsilon?: number;
+        areaSpikeRatio?: number;
+        jumpRatio?: number;
+        jerkinessRatio?: number;
+        preferredDirection?: 'up' | 'right' | 'down' | 'left';
+    }
+): string {
+    const motionEps = opts?.motionEpsilon ?? 2;
+    const biasEps = opts?.biasEpsilon ?? 0.5;
+    const areaSpike = opts?.areaSpikeRatio ?? 1.35;
+    const jumpDom = opts?.jumpRatio ?? 1.6; // vertical dominance factor
+
     const centers: Array<{ cx: number; cy: number }> = [];
     for (const r of rects) {
         const c = centroidFromMask(mask, imgW, r);
@@ -215,21 +260,60 @@ function classifyAnimation(rects: Rect[], mask: Uint8Array, imgW: number): strin
     const meanBiasX = centers.reduce((a, c, i) => a + (c.cx - rects[i].w / 2), 0) / centers.length;
     const meanBiasY = centers.reduce((a, c, i) => a + (c.cy - rects[i].h / 2), 0) / centers.length;
 
+    // Area per frame using integral
+    const imgH = (integral.length / (imgW + 1)) - 1; // since integral is (w+1)*(h+1)
+    const areas = rects.map(r => rectSum(integral, imgW, imgH, r.x, r.y, r.w, r.h));
+    const meanArea = areas.reduce((a, v) => a + v, 0) / Math.max(1, areas.length);
+    const maxArea = Math.max(...areas);
+    const minArea = Math.min(...areas);
+    const areaRangeRatio = meanArea > 0 ? (maxArea / Math.max(1, meanArea)) : 1;
+
     // Determine type
     let type = 'walk';
-    const lowMotion = rangeX < 2 && rangeY < 2 || rects.length <= 2;
+    const lowMotion = (rangeX < motionEps && rangeY < motionEps) || rects.length <= 2;
     if (lowMotion) type = 'idle';
+
+    // Advanced labels
+    if (type !== 'idle') {
+        if (areaRangeRatio >= areaSpike) {
+            type = 'attack';
+        } else if (rangeY > rangeX * jumpDom) {
+            // look for an up-down or down-up turning point
+            let signChanges = 0;
+            for (let i = 1; i < centers.length - 1; i++) {
+                const dy1 = centers[i].cy - centers[i - 1].cy;
+                const dy2 = centers[i + 1].cy - centers[i].cy;
+                if (dy1 === 0 || dy2 === 0) continue;
+                if ((dy1 > 0 && dy2 < 0) || (dy1 < 0 && dy2 > 0)) signChanges++;
+            }
+            if (signChanges >= 1) type = 'jump';
+        } else {
+            // jerkiness for 'hurt'
+            let stepSum = 0;
+            for (let i = 1; i < centers.length; i++) {
+                const dx = centers[i].cx - centers[i - 1].cx;
+                const dy = centers[i].cy - centers[i - 1].cy;
+                stepSum += Math.hypot(dx, dy);
+            }
+            const denom = (rangeX + rangeY) > 0 ? (rangeX + rangeY) : 1;
+            const jerkiness = stepSum / denom;
+            if (jerkiness > (opts?.jerkinessRatio ?? 2.2)) type = 'hurt';
+        }
+    }
 
     // Determine direction by larger motion axis or bias
     let dir = '';
-    if (rangeX > rangeY + 1) {
-        dir = meanBiasX >= 0 ? 'right' : 'left';
-    } else if (rangeY > rangeX + 1) {
-        dir = meanBiasY >= 0 ? 'down' : 'up';
+    if (opts?.preferredDirection) {
+        dir = opts.preferredDirection;
     } else {
-        // fallback to bias if motion similar
-        if (Math.abs(meanBiasX) > Math.abs(meanBiasY)) dir = meanBiasX >= 0 ? 'right' : 'left';
-        else if (Math.abs(meanBiasY) > 0.5) dir = meanBiasY >= 0 ? 'down' : 'up';
+        if (rangeX > rangeY + biasEps) {
+            dir = meanBiasX >= 0 ? 'right' : 'left';
+        } else if (rangeY > rangeX + biasEps) {
+            dir = meanBiasY >= 0 ? 'down' : 'up';
+        } else {
+            if (Math.abs(meanBiasX) > Math.abs(meanBiasY) + biasEps) dir = meanBiasX >= 0 ? 'right' : 'left';
+            else if (Math.abs(meanBiasY) > biasEps) dir = meanBiasY >= 0 ? 'down' : 'up';
+        }
     }
 
     return dir ? `${type}_${dir}` : type;
