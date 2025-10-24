@@ -127,12 +127,13 @@ export function autoDetectAnimations(
     const h = img.naturalHeight || img.height;
     if (!w || !h) return null;
 
-    const mask = computeForegroundMask(img, {
+    const maskRes = computeForegroundMask(img, {
         alphaThreshold: options?.alphaThreshold,
         bgTolerance: options?.bgTolerance,
         bgColor: options?.bgColor,
     });
-    const integral = buildMaskIntegral(mask.data, w, h);
+    const mask = maskRes.data;
+    const integral = buildMaskIntegral(mask, w, h);
 
     // Row presence (any opaque pixel in row)
     const rowHasPixel: boolean[] = new Array(h).fill(false);
@@ -165,7 +166,7 @@ export function autoDetectAnimations(
         }
         const colSegmentsRow = mergeSmallGaps(toSegments(colHasPixelRow), 1);
 
-        const rects: Rect[] = [];
+    const rects: Rect[] = [];
         for (const cs of colSegmentsRow) {
             const filled = rectSum(integral, w, h, cs.start, rs.start, cs.len, rs.len);
             const area = cs.len * rs.len;
@@ -176,7 +177,9 @@ export function autoDetectAnimations(
             }
         }
         if (rects.length) {
-            animations.push({ name: `anim_${rIdx}`, rects });
+            // Heuristic naming based on centroid motion and bias
+            const name = classifyAnimation(rects, mask, w);
+            animations.push({ name, rects });
         }
     }
 
@@ -189,6 +192,63 @@ export function autoDetectAnimations(
         cols,
         animations
     };
+}
+
+// --- Heuristic classifier for animation type and direction ---
+function classifyAnimation(rects: Rect[], mask: Uint8Array, imgW: number): string {
+    const centers: Array<{ cx: number; cy: number }> = [];
+    for (const r of rects) {
+        const c = centroidFromMask(mask, imgW, r);
+        centers.push({ cx: c.cx, cy: c.cy });
+    }
+    if (!centers.length) return 'anim';
+
+    // Ranges of motion
+    const xs = centers.map(c => c.cx);
+    const ys = centers.map(c => c.cy);
+    const minX = Math.min(...xs), maxX = Math.max(...xs);
+    const minY = Math.min(...ys), maxY = Math.max(...ys);
+    const rangeX = maxX - minX;
+    const rangeY = maxY - minY;
+
+    // Mean bias relative to cell center
+    const meanBiasX = centers.reduce((a, c, i) => a + (c.cx - rects[i].w / 2), 0) / centers.length;
+    const meanBiasY = centers.reduce((a, c, i) => a + (c.cy - rects[i].h / 2), 0) / centers.length;
+
+    // Determine type
+    let type = 'walk';
+    const lowMotion = rangeX < 2 && rangeY < 2 || rects.length <= 2;
+    if (lowMotion) type = 'idle';
+
+    // Determine direction by larger motion axis or bias
+    let dir = '';
+    if (rangeX > rangeY + 1) {
+        dir = meanBiasX >= 0 ? 'right' : 'left';
+    } else if (rangeY > rangeX + 1) {
+        dir = meanBiasY >= 0 ? 'down' : 'up';
+    } else {
+        // fallback to bias if motion similar
+        if (Math.abs(meanBiasX) > Math.abs(meanBiasY)) dir = meanBiasX >= 0 ? 'right' : 'left';
+        else if (Math.abs(meanBiasY) > 0.5) dir = meanBiasY >= 0 ? 'down' : 'up';
+    }
+
+    return dir ? `${type}_${dir}` : type;
+}
+
+function centroidFromMask(mask: Uint8Array, imgW: number, r: Rect): { cx: number; cy: number; count: number } {
+    let sumX = 0, sumY = 0, count = 0;
+    for (let y = r.y; y < r.y + r.h; y++) {
+        const row = y * imgW;
+        for (let x = r.x; x < r.x + r.w; x++) {
+            if (mask[row + x]) {
+                sumX += (x - r.x);
+                sumY += (y - r.y);
+                count++;
+            }
+        }
+    }
+    if (count === 0) return { cx: r.w / 2, cy: r.h / 2, count: 0 };
+    return { cx: sumX / count, cy: sumY / count, count };
 }
 
 function buildMaskIntegral(mask: Uint8Array, w: number, h: number): Int32Array {
