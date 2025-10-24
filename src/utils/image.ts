@@ -133,6 +133,8 @@ export function autoDetectAnimations(
         jerkinessRatio?: number;  // step variance indicator for 'hurt'
         // Optional row-direction mapping for classic 4-strip sheets
         rowDirections?: Array<'up' | 'right' | 'down' | 'left'>;
+        // 8-direction naming
+        use8Directions?: boolean;
     }
 ): AutoAnimationsResult | null {
     const minFillRatio = options?.minFillRatio ?? 0.01; // kare içinde en az %1 doluluk olsun
@@ -204,6 +206,7 @@ export function autoDetectAnimations(
                     jumpRatio: options?.jumpRatio,
                     jerkinessRatio: options?.jerkinessRatio,
                     preferredDirection: preferredDir,
+                    use8Directions: options?.use8Directions,
                 }
             );
             animations.push({ name, rects });
@@ -234,6 +237,7 @@ function classifyAnimation(
         jumpRatio?: number;
         jerkinessRatio?: number;
         preferredDirection?: 'up' | 'right' | 'down' | 'left';
+        use8Directions?: boolean;
     }
 ): string {
     const motionEps = opts?.motionEpsilon ?? 2;
@@ -273,10 +277,21 @@ function classifyAnimation(
     const lowMotion = (rangeX < motionEps && rangeY < motionEps) || rects.length <= 2;
     if (lowMotion) type = 'idle';
 
+    // Optional periodicity: if cadence is high, mark as 'run'
+    if (type === 'walk') {
+        const period = estimatePeriod(centers);
+        // Smaller period (faster cycle) suggests run; tweakable via motionEps as implicit scale
+        if (period > 0 && period <= Math.max(3, Math.floor(rects.length / 3))) {
+            type = 'run';
+        }
+    }
+
     // Advanced labels
     if (type !== 'idle') {
         if (areaRangeRatio >= areaSpike) {
-            type = 'attack';
+            // attack subtype: slash vs stab based on motion amplitude
+            const hasMotion = (rangeX + rangeY) >= motionEps;
+            type = hasMotion ? 'attack_slash' : 'attack_stab';
         } else if (rangeY > rangeX * jumpDom) {
             // look for an up-down or down-up turning point
             let signChanges = 0;
@@ -315,8 +330,42 @@ function classifyAnimation(
             else if (Math.abs(meanBiasY) > biasEps) dir = meanBiasY >= 0 ? 'down' : 'up';
         }
     }
+    // 8-direction mapping if requested
+    if (!dir && opts?.use8Directions) {
+        const vx = centers[centers.length - 1].cx - centers[0].cx;
+        const vy = centers[centers.length - 1].cy - centers[0].cy;
+        dir = direction8(vx, vy);
+    } else if (opts?.use8Directions && dir) {
+        // Upgrade 4-dir to closest 8-dir based on bias
+        const vx = centers[centers.length - 1].cx - centers[0].cx;
+        const vy = centers[centers.length - 1].cy - centers[0].cy;
+        const d8 = direction8(vx, vy);
+        if (d8) dir = d8;
+    }
 
     return dir ? `${type}_${dir}` : type;
+}
+
+function direction8(dx: number, dy: number): '' | 'up' | 'down' | 'left' | 'right' | 'up_right' | 'down_right' | 'down_left' | 'up_left' {
+    if (dx === 0 && dy === 0) return '';
+    const a = Math.atan2(-dy, dx); // screen coords: y down, so invert
+    const deg = (a * 180) / Math.PI;
+    // 8 buckets of 45 degrees centered on the main axes
+    const buckets: Array<{name: any; start: number; end: number}> = [
+        { name: 'right', start: -22.5, end: 22.5 },
+        { name: 'up_right', start: 22.5, end: 67.5 },
+        { name: 'up', start: 67.5, end: 112.5 },
+        { name: 'up_left', start: 112.5, end: 157.5 },
+        { name: 'left', start: 157.5, end: 180 },
+        { name: 'left', start: -180, end: -157.5 },
+        { name: 'down_left', start: -157.5, end: -112.5 },
+        { name: 'down', start: -112.5, end: -67.5 },
+        { name: 'down_right', start: -67.5, end: -22.5 }
+    ];
+    for (const b of buckets) {
+        if (deg >= b.start && deg < b.end) return b.name;
+    }
+    return '';
 }
 
 function centroidFromMask(mask: Uint8Array, imgW: number, r: Rect): { cx: number; cy: number; count: number } {
@@ -333,6 +382,31 @@ function centroidFromMask(mask: Uint8Array, imgW: number, r: Rect): { cx: number
     }
     if (count === 0) return { cx: r.w / 2, cy: r.h / 2, count: 0 };
     return { cx: sumX / count, cy: sumY / count, count };
+}
+
+// Very light-weight autocorrelation to estimate fundamental period of motion
+function estimatePeriod(points: Array<{ cx: number; cy: number }>): number {
+    const n = points.length;
+    if (n < 4) return -1;
+    // Use delta magnitude series
+    const deltas: number[] = [];
+    for (let i = 1; i < n; i++) {
+        const dx = points[i].cx - points[i - 1].cx;
+        const dy = points[i].cy - points[i - 1].cy;
+        deltas.push(Math.hypot(dx, dy));
+    }
+    const m = deltas.length;
+    // Normalize
+    const mean = deltas.reduce((a, v) => a + v, 0) / m;
+    const norm = deltas.map(v => v - mean);
+    let bestLag = -1, bestScore = 0;
+    const maxLag = Math.min(8, Math.floor(m / 2));
+    for (let lag = 2; lag <= maxLag; lag++) {
+        let s = 0;
+        for (let i = 0; i < m - lag; i++) s += norm[i] * norm[i + lag];
+        if (s > bestScore) { bestScore = s; bestLag = lag; }
+    }
+    return bestLag;
 }
 
 function buildMaskIntegral(mask: Uint8Array, w: number, h: number): Int32Array {

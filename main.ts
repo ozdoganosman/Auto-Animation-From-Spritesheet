@@ -7,6 +7,14 @@ const imgPathInput = document.getElementById('imgPath') as HTMLInputElement;
 const imgFileInput = document.getElementById('imgFile') as HTMLInputElement;
 const animSelect = document.getElementById('animSelect') as HTMLSelectElement;
 const reloadBtn = document.getElementById('reload') as HTMLButtonElement;
+// Heuristics controls
+const motionEpsInput = document.getElementById('motionEps') as HTMLInputElement;
+const biasEpsInput = document.getElementById('biasEps') as HTMLInputElement;
+const areaSpikeInput = document.getElementById('areaSpike') as HTMLInputElement;
+const jumpRatioInput = document.getElementById('jumpRatio') as HTMLInputElement;
+const jerkRatioInput = document.getElementById('jerkRatio') as HTMLInputElement;
+const use8dirInput = document.getElementById('use8dir') as HTMLInputElement;
+const row4mapInput = document.getElementById('row4map') as HTMLInputElement;
 const downloadCurrentBtn = document.getElementById('downloadCurrent') as HTMLButtonElement;
 const downloadAllBtn = document.getElementById('downloadAll') as HTMLButtonElement;
 const downloadPNGBtn = document.getElementById('downloadPNG') as HTMLButtonElement;
@@ -52,7 +60,16 @@ async function setup() {
   // Otomatik grid ve animasyon tespiti
   rects = [];
   if (img) {
-    const animRes = ImageUtils.autoDetectAnimations(img);
+    const opts: any = {
+      motionEpsilon: motionEpsInput ? parseFloat(motionEpsInput.value) : undefined,
+      biasEpsilon: biasEpsInput ? parseFloat(biasEpsInput.value) : undefined,
+      areaSpikeRatio: areaSpikeInput ? parseFloat(areaSpikeInput.value) : undefined,
+      jumpRatio: jumpRatioInput ? parseFloat(jumpRatioInput.value) : undefined,
+      jerkinessRatio: jerkRatioInput ? parseFloat(jerkRatioInput.value) : undefined,
+      use8Directions: use8dirInput ? !!use8dirInput.checked : undefined,
+      rowDirections: row4mapInput && row4mapInput.checked ? ['up','right','down','left'] : undefined,
+    };
+    const animRes = ImageUtils.autoDetectAnimations(img, opts);
     if (animRes && animRes.animations.length) {
       animations = animRes.animations;
       rects = animations[0].rects;
